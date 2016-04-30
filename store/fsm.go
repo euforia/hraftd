@@ -1,7 +1,7 @@
 package store
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	"fmt"
 	"io"
 
@@ -11,32 +11,15 @@ import (
 type fsm Store
 
 // Apply applies a Raft log entry to the key-value store.
-/*
-func (f *fsm) Apply(l *raft.Log) interface{} {
-	var c command
-	if err := json.Unmarshal(l.Data, &c); err != nil {
-		panic(fmt.Sprintf("failed to unmarshal command: %s", err.Error()))
-	}
-
-	switch c.Op {
-	case "set":
-		return f.applySet(c.Key, c.Value)
-	case "delete":
-		return f.applyDelete(c.Key)
-	default:
-		panic(fmt.Sprintf("unrecognized command op: %s", c.Op))
-	}
-}
-*/
 func (f *fsm) Apply(l *raft.Log) interface{} {
 	var c commandOptimized
 	c.Deserialize(l.Data)
 
 	switch c.Op {
 	case OpTypeSet:
-		return f.applySet(string(c.Key), string(c.Value))
+		return f.applySet(c.Key, c.Value)
 	case OpTypeDelete:
-		return f.applyDelete(string(c.Key))
+		return f.applyDelete(c.Key)
 	default:
 		panic(fmt.Sprintf("unrecognized command op: %v", c.Op))
 	}
@@ -48,7 +31,7 @@ func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 	defer f.mu.Unlock()
 
 	// Clone the map.
-	o := make(map[string]string)
+	o := make(map[string][]byte)
 	for k, v := range f.m {
 		o[k] = v
 	}
@@ -57,8 +40,8 @@ func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 
 // Restore stores the key-value store to a previous state.
 func (f *fsm) Restore(rc io.ReadCloser) error {
-	o := make(map[string]string)
-	if err := json.NewDecoder(rc).Decode(&o); err != nil {
+	o := make(map[string][]byte)
+	if err := gob.NewDecoder(rc).Decode(&o); err != nil {
 		return err
 	}
 
@@ -68,16 +51,20 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 	return nil
 }
 
-func (f *fsm) applySet(key, value string) interface{} {
+func (f *fsm) applySet(key string, value []byte) interface{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	f.m[key] = value
+
 	return nil
 }
 
 func (f *fsm) applyDelete(key string) interface{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	delete(f.m, key)
+
 	return nil
 }

@@ -1,25 +1,26 @@
 package store
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 
 	"github.com/hashicorp/raft"
 )
 
 type fsmSnapshot struct {
-	store map[string]string
+	store map[string][]byte
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	err := func() error {
-		// Encode data.
-		b, err := json.Marshal(f.store)
-		if err != nil {
+
+		var buff bytes.Buffer
+		if err := gob.NewEncoder(&buff).Encode(f.store); err != nil {
 			return err
 		}
 
 		// Write data to sink.
-		if _, err := sink.Write(b); err != nil {
+		if _, err := sink.Write(buff.Bytes()); err != nil {
 			return err
 		}
 

@@ -34,7 +34,7 @@ func Test_NewServer(t *testing.T) {
 		t.Fatalf("wrong value received for key k1: %s", string(b))
 	}
 
-	store.m["k2"] = "v2"
+	store.m["k2"] = []byte("v2")
 	b = doGet(t, s.URL(), "k2")
 	if string(b) != `{"k2":"v2"}` {
 		t.Fatalf("wrong value received for key k2: %s", string(b))
@@ -58,20 +58,20 @@ func (t *testServer) URL() string {
 }
 
 type testStore struct {
-	m map[string]string
+	m map[string][]byte
 }
 
 func newTestStore() *testStore {
 	return &testStore{
-		m: make(map[string]string),
+		m: make(map[string][]byte),
 	}
 }
 
-func (t *testStore) Get(key string) (string, error) {
+func (t *testStore) Get(key string) ([]byte, error) {
 	return t.m[key], nil
 }
 
-func (t *testStore) Set(key, value string) error {
+func (t *testStore) Set(key string, value []byte) error {
 	t.m[key] = value
 	return nil
 }

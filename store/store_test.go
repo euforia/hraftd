@@ -41,7 +41,7 @@ func Test_StoreOpenSingleNode(t *testing.T) {
 	// Simple way to ensure there is a leader.
 	time.Sleep(3 * time.Second)
 
-	if err := s.Set("foo", "bar"); err != nil {
+	if err := s.Set("foo", []byte("bar")); err != nil {
 		t.Fatalf("failed to set key: %s", err.Error())
 	}
 
@@ -51,7 +51,7 @@ func Test_StoreOpenSingleNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get key: %s", err.Error())
 	}
-	if value != "bar" {
+	if string(value) != "bar" {
 		t.Fatalf("key has wrong value: %s", value)
 	}
 
@@ -62,10 +62,10 @@ func Test_StoreOpenSingleNode(t *testing.T) {
 	// Wait for committed log entry to be applied.
 	time.Sleep(500 * time.Millisecond)
 	value, err = s.Get("foo")
-	if err != nil {
-		t.Fatalf("failed to get key: %s", err.Error())
+	if err == nil {
+		t.Fatal("key should be missing")
 	}
-	if value != "" {
+	if string(value) != "" {
 		t.Fatalf("key has wrong value: %s", value)
 	}
 

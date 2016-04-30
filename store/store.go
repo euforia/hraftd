@@ -7,7 +7,6 @@
 package store
 
 import (
-	//"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -26,7 +25,7 @@ type Store struct {
 	RaftBind string
 
 	mu sync.Mutex
-	m  map[string]string // The key-value store for the system.
+	m  map[string][]byte // The key-value store for the system.
 
 	raft *raft.Raft // The consensus mechanism
 
@@ -36,7 +35,7 @@ type Store struct {
 // New returns a new Store.
 func New() *Store {
 	return &Store{
-		m:      make(map[string]string),
+		m:      make(map[string][]byte),
 		logger: log.New(os.Stderr, "[store] ", log.LstdFlags),
 	}
 }
@@ -96,33 +95,26 @@ func (s *Store) Open(enableSingle bool) error {
 }
 
 // Get returns the value for the given key.
-func (s *Store) Get(key string) (string, error) {
+func (s *Store) Get(key string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.m[key], nil
+
+	if v, ok := s.m[key]; ok {
+		return v, nil
+	}
+	return nil, fmt.Errorf("Key not found: %s", key)
 }
 
 // Set sets the value for the given key.
-func (s *Store) Set(key, value string) error {
+func (s *Store) Set(key string, value []byte) error {
 	if s.raft.State() != raft.Leader {
 		return fmt.Errorf("not leader")
 	}
 
-	/*
-		c := &command{
-			Op:    "set",
-			Key:   key,
-			Value: value,
-		}
-		b, err := json.Marshal(c)
-		if err != nil {
-			return err
-		}
-	*/
 	c := commandOptimized{
 		Op:    OpTypeSet,
-		Key:   []byte(key),
-		Value: []byte(value),
+		Key:   key,
+		Value: value,
 	}
 	b := c.Serialize()
 
@@ -139,19 +131,10 @@ func (s *Store) Delete(key string) error {
 	if s.raft.State() != raft.Leader {
 		return fmt.Errorf("not leader")
 	}
-	/*
-		c := &command{
-			Op:  "delete",
-			Key: key,
-		}
-		b, err := json.Marshal(c)
-		if err != nil {
-			return err
-		}
-	*/
+
 	c := commandOptimized{
 		Op:  OpTypeDelete,
-		Key: []byte(key),
+		Key: key,
 	}
 	b := c.Serialize()
 
