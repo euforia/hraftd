@@ -11,6 +11,7 @@ import (
 type fsm Store
 
 // Apply applies a Raft log entry to the key-value store.
+/*
 func (f *fsm) Apply(l *raft.Log) interface{} {
 	var c command
 	if err := json.Unmarshal(l.Data, &c); err != nil {
@@ -24,6 +25,20 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 		return f.applyDelete(c.Key)
 	default:
 		panic(fmt.Sprintf("unrecognized command op: %s", c.Op))
+	}
+}
+*/
+func (f *fsm) Apply(l *raft.Log) interface{} {
+	var c commandOptimized
+	c.Deserialize(l.Data)
+
+	switch c.Op {
+	case OpTypeSet:
+		return f.applySet(string(c.Key), string(c.Value))
+	case OpTypeDelete:
+		return f.applyDelete(string(c.Key))
+	default:
+		panic(fmt.Sprintf("unrecognized command op: %v", c.Op))
 	}
 }
 

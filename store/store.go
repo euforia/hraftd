@@ -7,7 +7,7 @@
 package store
 
 import (
-	"encoding/json"
+	//"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -108,15 +108,23 @@ func (s *Store) Set(key, value string) error {
 		return fmt.Errorf("not leader")
 	}
 
-	c := &command{
-		Op:    "set",
-		Key:   key,
-		Value: value,
+	/*
+		c := &command{
+			Op:    "set",
+			Key:   key,
+			Value: value,
+		}
+		b, err := json.Marshal(c)
+		if err != nil {
+			return err
+		}
+	*/
+	c := commandOptimized{
+		Op:    OpTypeSet,
+		Key:   []byte(key),
+		Value: []byte(value),
 	}
-	b, err := json.Marshal(c)
-	if err != nil {
-		return err
-	}
+	b := c.Serialize()
 
 	f := s.raft.Apply(b, raftTimeout)
 	if err, ok := f.(error); ok {
@@ -131,15 +139,21 @@ func (s *Store) Delete(key string) error {
 	if s.raft.State() != raft.Leader {
 		return fmt.Errorf("not leader")
 	}
-
-	c := &command{
-		Op:  "delete",
-		Key: key,
+	/*
+		c := &command{
+			Op:  "delete",
+			Key: key,
+		}
+		b, err := json.Marshal(c)
+		if err != nil {
+			return err
+		}
+	*/
+	c := commandOptimized{
+		Op:  OpTypeDelete,
+		Key: []byte(key),
 	}
-	b, err := json.Marshal(c)
-	if err != nil {
-		return err
-	}
+	b := c.Serialize()
 
 	f := s.raft.Apply(b, raftTimeout)
 	if err, ok := f.(error); ok {
