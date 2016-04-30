@@ -22,7 +22,7 @@ type Store interface {
 	// Delete removes the given key, via distributed consensus.
 	Delete(key string) error
 
-	// Join joins the node, reachable at addr, to the cluster.
+	// Join joins the node (self), reachable at addr, to the cluster.
 	Join(addr string) error
 }
 

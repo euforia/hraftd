@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/otoolep/hraftd/http"
-	"github.com/otoolep/hraftd/store"
+	"github.com/euforia/hraftd/http"
+	"github.com/euforia/hraftd/store"
 )
 
 // Command line defaults
