@@ -35,3 +35,15 @@ func Test_commandOptimized(t *testing.T) {
 
 	t.Logf("%#v\n", c)
 }
+
+func Test_getRpcBindAddr(t *testing.T) {
+	n, err := getRpcBindAddr(":10000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != ":10001" {
+		t.Fatalf("Failed: %s\n", n)
+	}
+
+	t.Log(n)
+}

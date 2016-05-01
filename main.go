@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	//"log"
 	"net/http"
 	"os"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/euforia/hraftd/http"
 	"github.com/euforia/hraftd/store"
 )
@@ -20,22 +21,37 @@ const (
 )
 
 // Command line parameters
-var httpAddr string
-var raftAddr string
-var joinAddr string
+var (
+	httpAddr string
+	raftAddr string
+	joinAddr string
+
+	// Toggle raft logging
+	logRaft bool
+)
 
 func init() {
 	flag.StringVar(&httpAddr, "haddr", DefaultHTTPAddr, "Set the HTTP bind address")
-	flag.StringVar(&raftAddr, "raddr", DefaultRaftAddr, "Set Raft bind address")
+	flag.StringVar(&raftAddr, "raft-addr", DefaultRaftAddr, "Set Raft bind address")
 	flag.StringVar(&joinAddr, "join", "", "Set join address, if any")
+
+	flag.BoolVar(&logRaft, "vv", false, "Very verbose logging")
+	debug := flag.Bool("v", false, "Verbose logging")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <raft-data-path> \n", os.Args[0])
 		flag.PrintDefaults()
 	}
+
+	flag.Parse()
+
+	if *debug || logRaft {
+		log.SetLevel(log.DebugLevel)
+		log.Infoln("Debug mode: ON")
+	}
 }
 
 func main() {
-	flag.Parse()
 
 	if flag.NArg() == 0 {
 		fmt.Fprintf(os.Stderr, "No Raft storage directory specified\n")
@@ -51,9 +67,11 @@ func main() {
 	os.MkdirAll(raftDir, 0700)
 
 	s := store.New()
+
 	s.RaftDir = raftDir
 	s.RaftBind = raftAddr
-	if err := s.Open(joinAddr == ""); err != nil {
+
+	if err := s.Open(joinAddr == "", logRaft); err != nil {
 		log.Fatalf("failed to open store: %s", err.Error())
 	}
 
@@ -69,7 +87,7 @@ func main() {
 		}
 	}
 
-	log.Println("hraft started successfully")
+	log.Infof("Started hraftd successfully")
 
 	// Block forever.
 	select {}
