@@ -5,10 +5,11 @@ package httpd
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strings"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 // Store is the interface Raft-backed key-value stores must implement.
@@ -102,6 +103,7 @@ func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.Join(remoteAddr); err != nil {
+		log.Errorln(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

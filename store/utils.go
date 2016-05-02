@@ -10,12 +10,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
-)
-
-const (
-	retainSnapshotCount = 2
-	raftTimeout         = 10 * time.Second
 )
 
 func readPeersJSON(path string) ([]string, error) {
@@ -29,12 +23,8 @@ func readPeersJSON(path string) ([]string, error) {
 	}
 
 	var peers []string
-	dec := json.NewDecoder(bytes.NewReader(b))
-	if err := dec.Decode(&peers); err != nil {
-		return nil, err
-	}
-
-	return peers, nil
+	err = json.Unmarshal(b, &peers)
+	return peers, err
 }
 
 func itob(v int64) []byte {
@@ -84,7 +74,7 @@ func sendRpcMessage(conn net.Conn, data []byte) (err error) {
 
 func requestResponseRpc(conn net.Conn, data []byte) (resp []byte, err error) {
 	if err = sendRpcMessage(conn, data); err == nil {
-		var resp []byte
+		//var resp []byte
 		if resp, err = recvRpcMessage(conn); err == nil {
 			if strings.HasPrefix(string(resp), "error") {
 				err = fmt.Errorf("%s", resp)

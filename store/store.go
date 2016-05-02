@@ -20,31 +20,40 @@ import (
 	"github.com/hashicorp/raft-boltdb"
 )
 
+const (
+	retainSnapshotCount = 2
+	raftTimeout         = 10 * time.Second
+)
+
 // Store is a simple key-value store, where all changes are made via Raft consensus.
 type Store struct {
 	RaftDir  string
 	RaftBind string
 
-	//rpcBindAddr string
+	//cfg HraftConfig
+
+	m                 KVStore    // The key-value store for the system (local).
+	raft              *raft.Raft // The consensus mechanism
+	rpcServer         *RPCServer // Forwards to leader.
+	disableForwarding bool       // should forwarding be turned off (default on)
 
 	mu sync.Mutex
-	m  map[string][]byte // The key-value store for the system.
-
-	raft *raft.Raft // The consensus mechanism
-
-	rpcServer *RPCServer // Forwards to leader.
 }
 
 // New returns a new Store.
 func New() *Store {
 	return &Store{
-		m: make(map[string][]byte),
+		m:                 InMemKvStore{}, // temporarily here
+		disableForwarding: false,
 	}
 }
 
 // Open opens the store. If enableSingle is set, and there are no existing peers,
 // then this node becomes the first node, and therefore leader, of the cluster.
 func (s *Store) Open(enableSingle, enableRaftLogging bool) error {
+
+	os.MkdirAll(s.RaftDir, 0700)
+
 	// Setup Raft configuration.
 	config := raft.DefaultConfig()
 
@@ -89,24 +98,26 @@ func (s *Store) Open(enableSingle, enableRaftLogging bool) error {
 	}
 
 	// Create the log store and stable store.
-	logStore, err := raftboltdb.NewBoltStore(filepath.Join(s.RaftDir, "raft.db"))
+	logAndStableStore, err := raftboltdb.NewBoltStore(filepath.Join(s.RaftDir, "raft.db"))
 	if err != nil {
 		return fmt.Errorf("new bolt store: %s", err)
 	}
 
 	// Instantiate the Raft systems.
 	log.Infof("Starting raft on: %s", s.RaftBind)
-	ra, err := raft.NewRaft(config, (*fsm)(s), logStore, logStore, snapshots, peerStore, transport)
+	ra, err := raft.NewRaft(config, (*fsm)(s), logAndStableStore, logAndStableStore, snapshots, peerStore, transport)
 	if err != nil {
 		return fmt.Errorf("new raft: %s", err)
 	}
 	s.raft = ra
 
 	// Instanticate rpc server
-	var rpcBindAddr string
-	if rpcBindAddr, err = getRpcBindAddr(s.RaftBind); err == nil {
-		if s.rpcServer, err = NewRPCServer(rpcBindAddr); err == nil {
-			s.rpcServer.Start(s.applyRaftLog)
+	if !s.disableForwarding {
+		var rpcBindAddr string
+		if rpcBindAddr, err = getRpcBindAddr(s.RaftBind); err == nil {
+			if s.rpcServer, err = NewRPCServer(rpcBindAddr); err == nil {
+				s.rpcServer.Start(s.applyRaftLog)
+			}
 		}
 	}
 
@@ -118,10 +129,7 @@ func (s *Store) Get(key string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if v, ok := s.m[key]; ok {
-		return v, nil
-	}
-	return nil, fmt.Errorf("Key not found: %s", key)
+	return s.m.Get(key)
 }
 
 // Set sets the value for the given key by applying to the log.
@@ -151,15 +159,34 @@ func (s *Store) Delete(key string) error {
 
 // Join joins a node, located at addr, to this store. The node must be ready to
 // respond to Raft communications at that address.
-func (s *Store) Join(addr string) error {
+func (s *Store) Join(addr string) (err error) {
 	log.Infof("[store] Received join request for remote node as %s", addr)
 
-	f := s.raft.AddPeer(addr)
-	if f.Error() != nil {
-		return f.Error()
+	if s.raft.State() == raft.Leader {
+		f := s.raft.AddPeer(addr)
+		err = f.Error()
+	} else if !s.disableForwarding {
+
+		co := commandOptimized{
+			Op:  OpTypeJoin,
+			Key: addr,
+		}
+		b := co.Serialize()
+		err = s.forwardLogToLeader(b)
+	} else {
+		err = fmt.Errorf("node is not the leader")
 	}
-	log.Infof("[store] Node at %s joined successfully", addr)
-	return nil
+	/*
+		f := s.raft.AddPeer(addr)
+		if f.Error() != nil {
+			return f.Error()
+		}
+	*/
+	if err == nil {
+		log.Infof("[store] Node at %s joined successfully", addr)
+	}
+	//return nil
+	return
 }
 
 func (s *Store) forwardLogToLeader(b []byte) error {
@@ -185,6 +212,10 @@ func (s *Store) applyRaftLog(b []byte) error {
 		}
 		return nil
 
+	}
+
+	if s.disableForwarding {
+		return fmt.Errorf("node is not the leader")
 	}
 	// Forward to leader
 	return s.forwardLogToLeader(b)

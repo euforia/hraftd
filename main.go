@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	//"log"
 	"net/http"
 	"os"
 
@@ -17,61 +16,58 @@ import (
 // Command line defaults
 const (
 	DefaultHTTPAddr = ":11000"
-	DefaultRaftAddr = ":12000"
 )
 
 // Command line parameters
 var (
 	httpAddr string
-	raftAddr string
-	joinAddr string
-
-	// Toggle raft logging
-	logRaft bool
+	hrConfig = store.DefaultHraftConfig()
 )
 
 func init() {
 	flag.StringVar(&httpAddr, "haddr", DefaultHTTPAddr, "Set the HTTP bind address")
-	flag.StringVar(&raftAddr, "raft-addr", DefaultRaftAddr, "Set Raft bind address")
-	flag.StringVar(&joinAddr, "join", "", "Set join address, if any")
+	flag.StringVar(&hrConfig.RaftBindAddr, "raft-addr", store.DefaultRaftAddr, "Set Raft bind address")
+	flag.StringVar(&hrConfig.JoinAddr, "join", "", "Set join address, if any")
 
-	flag.BoolVar(&logRaft, "vv", false, "Very verbose logging")
-	debug := flag.Bool("v", false, "Verbose logging")
+	flag.StringVar(&hrConfig.RaftDataDir, "data-dir", store.DefaultRaftDataDir, "Storage data directory")
+
+	flag.BoolVar(&hrConfig.EnableRaftLogging, "vv", false, "Very verbose logging")
+	flag.BoolVar(&hrConfig.EnableDebug, "v", false, "Verbose logging")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <raft-data-path> \n", os.Args[0])
+		//fmt.Fprintf(os.Stderr, "Usage: %s [options] <raft-data-path> \n", os.Args[0])
+		fmt.Printf(`
+Usage:
+
+    %s [options]
+
+Options:
+
+`, os.Args[0])
+
 		flag.PrintDefaults()
 	}
 
 	flag.Parse()
 
-	if *debug || logRaft {
+	if hrConfig.EnableDebug || hrConfig.EnableRaftLogging {
 		log.SetLevel(log.DebugLevel)
 		log.Infoln("Debug mode: ON")
+	}
+
+	if hrConfig.RaftDataDir == "" {
+		log.Fatalln("No Raft storage directory specified")
 	}
 }
 
 func main() {
 
-	if flag.NArg() == 0 {
-		fmt.Fprintf(os.Stderr, "No Raft storage directory specified\n")
-		os.Exit(1)
-	}
-
-	// Ensure Raft storage exists.
-	raftDir := flag.Arg(0)
-	if raftDir == "" {
-		fmt.Fprintf(os.Stderr, "No Raft storage directory specified\n")
-		os.Exit(1)
-	}
-	os.MkdirAll(raftDir, 0700)
-
 	s := store.New()
 
-	s.RaftDir = raftDir
-	s.RaftBind = raftAddr
+	s.RaftDir = hrConfig.RaftDataDir
+	s.RaftBind = hrConfig.RaftBindAddr
 
-	if err := s.Open(joinAddr == "", logRaft); err != nil {
+	if err := s.Open(hrConfig.JoinAddr == "", hrConfig.EnableRaftLogging); err != nil {
 		log.Fatalf("failed to open store: %s", err.Error())
 	}
 
@@ -81,9 +77,9 @@ func main() {
 	}
 
 	// If join was specified, make the join request.
-	if joinAddr != "" {
-		if err := join(joinAddr, raftAddr); err != nil {
-			log.Fatalf("failed to join node at %s: %s", joinAddr, err.Error())
+	if hrConfig.JoinAddr != "" {
+		if err := join(hrConfig.JoinAddr, hrConfig.RaftBindAddr); err != nil {
+			log.Fatalf("failed to join node at %s: %s", hrConfig.JoinAddr, err.Error())
 		}
 	}
 

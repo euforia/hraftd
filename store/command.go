@@ -5,6 +5,7 @@ type OpType uint8
 const (
 	OpTypeSet OpType = iota
 	OpTypeDelete
+	OpTypeJoin
 )
 
 type commandOptimized struct {

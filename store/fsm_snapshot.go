@@ -8,7 +8,8 @@ import (
 )
 
 type fsmSnapshot struct {
-	store map[string][]byte
+	//store map[string][]byte
+	store KVStore
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
