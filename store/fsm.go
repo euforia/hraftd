@@ -56,8 +56,6 @@ func (f *fsm) applySet(key string, value []byte) interface{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	//f.m[key] = value
-	//return nil
 	return f.m.Set(key, value)
 }
 
@@ -65,7 +63,5 @@ func (f *fsm) applyDelete(key string) interface{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	//delete(f.m, key)
-	//return nil
 	return f.m.Delete(key)
 }

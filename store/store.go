@@ -18,107 +18,123 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
+
+	"github.com/euforia/hraftd/mux"
 )
 
 const (
 	retainSnapshotCount = 2
 	raftTimeout         = 10 * time.Second
+
+	muxRaftHeader = 1
+	muxRpcHeader  = 2
 )
 
 // Store is a simple key-value store, where all changes are made via Raft consensus.
 type Store struct {
-	RaftDir  string
-	RaftBind string
+	cfg HraftConfig
 
-	//cfg HraftConfig
+	m KVStore // The key-value store for the system (local).
 
-	m                 KVStore    // The key-value store for the system (local).
-	raft              *raft.Raft // The consensus mechanism
-	rpcServer         *RPCServer // Forwards to leader.
-	disableForwarding bool       // should forwarding be turned off (default on)
+	raft *raft.Raft // The consensus mechanism
+
+	crpc *ClusterRPC // Cluster communication. e.g. joins
 
 	mu sync.Mutex
+
+	peerStore *raft.JSONPeers
 }
 
 // New returns a new Store.
-func New() *Store {
+func New(kvstore KVStore) *Store {
 	return &Store{
-		m:                 InMemKvStore{}, // temporarily here
-		disableForwarding: false,
+		m: kvstore,
 	}
 }
 
 // Open opens the store. If enableSingle is set, and there are no existing peers,
 // then this node becomes the first node, and therefore leader, of the cluster.
-func (s *Store) Open(enableSingle, enableRaftLogging bool) error {
+//func (s *Store) Open(enableSingle, enableRaftLogging bool) error {
+func (s *Store) Open(cfg *HraftConfig) error {
 
-	os.MkdirAll(s.RaftDir, 0700)
+	s.cfg = *cfg
+
+	os.MkdirAll(s.cfg.RaftDataDir, 0700)
 
 	// Setup Raft configuration.
 	config := raft.DefaultConfig()
 
 	//  Disable raft logger
-	if !enableRaftLogging {
+
+	if !s.cfg.EnableRaftLogging {
 		config.LogOutput = ioutil.Discard
 	} else {
-		log.Infoln("Raft logging: ON")
+		log.Infoln("Enabling raft logs")
 	}
 
 	// Check for any existing peers.
-	peers, err := readPeersJSON(filepath.Join(s.RaftDir, "peers.json"))
+	peers, err := readPeersJSON(filepath.Join(s.cfg.RaftDataDir, "peers.json"))
 	if err != nil {
 		return err
 	}
 
 	// Allow the node to entry single-mode, potentially electing itself, if
 	// explicitly enabled and there is only 1 node in the cluster already.
-	if enableSingle && len(peers) <= 1 {
+	if s.cfg.JoinAddr == "" && len(peers) <= 1 {
 		log.Infoln("Enabling single-node mode")
 		config.EnableSingleNode = true
 		config.DisableBootstrapAfterElect = false
 	}
 
+	// mux
+	ln, err := net.Listen("tcp", s.cfg.RaftBindAddr)
+	if err != nil {
+		return err
+	}
+
 	// Setup Raft communication.
-	addr, err := net.ResolveTCPAddr("tcp", s.RaftBind)
+	addr, err := net.ResolveTCPAddr("tcp", s.cfg.RaftBindAddr)
 	if err != nil {
 		return err
 	}
-	transport, err := raft.NewTCPTransport(s.RaftBind, addr, 3, 10*time.Second, os.Stderr)
-	if err != nil {
-		return err
-	}
+
+	muxTrans := mux.NewMuxedTransport(ln, addr)
+	go muxTrans.Serve()
+
+	raftTn := muxTrans.Listen(muxRaftHeader)
+
+	transport := raft.NewNetworkTransport(raftTn, 3, 10*time.Second, config.LogOutput)
 
 	// Create peer storage.
-	peerStore := raft.NewJSONPeers(s.RaftDir, transport)
+	s.peerStore = raft.NewJSONPeers(s.cfg.RaftDataDir, transport)
 
 	// Create the snapshot store. This allows the Raft to truncate the log.
-	snapshots, err := raft.NewFileSnapshotStore(s.RaftDir, retainSnapshotCount, os.Stderr)
+	snapshots, err := raft.NewFileSnapshotStore(s.cfg.RaftDataDir, retainSnapshotCount, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("file snapshot store: %s", err)
 	}
 
 	// Create the log store and stable store.
-	logAndStableStore, err := raftboltdb.NewBoltStore(filepath.Join(s.RaftDir, "raft.db"))
+	logAndStableStore, err := raftboltdb.NewBoltStore(filepath.Join(s.cfg.RaftDataDir, "raft.db"))
 	if err != nil {
 		return fmt.Errorf("new bolt store: %s", err)
 	}
 
 	// Instantiate the Raft systems.
-	log.Infof("Starting raft on: %s", s.RaftBind)
-	ra, err := raft.NewRaft(config, (*fsm)(s), logAndStableStore, logAndStableStore, snapshots, peerStore, transport)
+	log.Infof("[raft] Starting raft on: %s", s.cfg.RaftBindAddr)
+	ra, err := raft.NewRaft(config, (*fsm)(s), logAndStableStore, logAndStableStore, snapshots, s.peerStore, transport)
 	if err != nil {
 		return fmt.Errorf("new raft: %s", err)
 	}
 	s.raft = ra
 
+	knownPeers, _ := s.peerStore.Peers()
+	log.Infof("[raft] Known peers: %v", knownPeers)
+
 	// Instanticate rpc server
-	if !s.disableForwarding {
-		var rpcBindAddr string
-		if rpcBindAddr, err = getRpcBindAddr(s.RaftBind); err == nil {
-			if s.rpcServer, err = NewRPCServer(rpcBindAddr); err == nil {
-				s.rpcServer.Start(s.applyRaftLog)
-			}
-		}
+	if s.cfg.EnableLeaderForward {
+		s.crpc = NewClusterRPC(muxTrans.Listen(muxRpcHeader))
+		go s.crpc.Serve(s.applyRaftLog)
 	}
 
 	return err
@@ -160,13 +176,12 @@ func (s *Store) Delete(key string) error {
 // Join joins a node, located at addr, to this store. The node must be ready to
 // respond to Raft communications at that address.
 func (s *Store) Join(addr string) (err error) {
-	log.Infof("[store] Received join request for remote node as %s", addr)
+	log.Infof("[raft] Received join request for remote node as %s", addr)
 
 	if s.raft.State() == raft.Leader {
 		f := s.raft.AddPeer(addr)
 		err = f.Error()
-	} else if !s.disableForwarding {
-
+	} else if s.cfg.EnableLeaderForward {
 		co := commandOptimized{
 			Op:  OpTypeJoin,
 			Key: addr,
@@ -176,31 +191,11 @@ func (s *Store) Join(addr string) (err error) {
 	} else {
 		err = fmt.Errorf("node is not the leader")
 	}
-	/*
-		f := s.raft.AddPeer(addr)
-		if f.Error() != nil {
-			return f.Error()
-		}
-	*/
+
 	if err == nil {
-		log.Infof("[store] Node at %s joined successfully", addr)
+		log.Infof("[raft] Node at %s joined successfully", addr)
 	}
-	//return nil
 	return
-}
-
-func (s *Store) forwardLogToLeader(b []byte) error {
-	log.Infof("Forwarding to leader: %s", s.raft.Leader())
-
-	leaderRpcAddr, err := getRpcBindAddr(s.raft.Leader())
-	if err == nil {
-		log.Debugf("Leader RPC address: %s", leaderRpcAddr)
-		var conn net.Conn
-		if conn, err = net.Dial("tcp", leaderRpcAddr); err == nil {
-			_, err = requestResponseRpc(conn, b)
-		}
-	}
-	return err
 }
 
 func (s *Store) applyRaftLog(b []byte) error {
@@ -211,12 +206,26 @@ func (s *Store) applyRaftLog(b []byte) error {
 			return err
 		}
 		return nil
-
 	}
 
-	if s.disableForwarding {
+	if !s.cfg.EnableLeaderForward {
 		return fmt.Errorf("node is not the leader")
 	}
 	// Forward to leader
 	return s.forwardLogToLeader(b)
+}
+
+func (s *Store) forwardLogToLeader(b []byte) (err error) {
+	if s.raft.Leader() != "" {
+		log.Debugf("[store] Forwarding to leader: %s", s.raft.Leader())
+
+		var conn net.Conn
+		if conn, err = s.crpc.Dial(s.raft.Leader(), 10*time.Second); err == nil {
+			_, err = requestResponseRpc(conn, b)
+		}
+
+	} else {
+		err = fmt.Errorf("No known leader. Not forwarding request")
+	}
+	return
 }

@@ -8,7 +8,6 @@ import (
 )
 
 type fsmSnapshot struct {
-	//store map[string][]byte
 	store KVStore
 }
 

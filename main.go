@@ -35,7 +35,6 @@ func init() {
 	flag.BoolVar(&hrConfig.EnableDebug, "v", false, "Verbose logging")
 
 	flag.Usage = func() {
-		//fmt.Fprintf(os.Stderr, "Usage: %s [options] <raft-data-path> \n", os.Args[0])
 		fmt.Printf(`
 Usage:
 
@@ -62,12 +61,9 @@ Options:
 
 func main() {
 
-	s := store.New()
+	s := store.New(store.InMemKvStore{})
 
-	s.RaftDir = hrConfig.RaftDataDir
-	s.RaftBind = hrConfig.RaftBindAddr
-
-	if err := s.Open(hrConfig.JoinAddr == "", hrConfig.EnableRaftLogging); err != nil {
+	if err := s.Open(&hrConfig); err != nil {
 		log.Fatalf("failed to open store: %s", err.Error())
 	}
 

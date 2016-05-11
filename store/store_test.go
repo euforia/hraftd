@@ -7,39 +7,55 @@ import (
 	"time"
 )
 
+var (
+	hraftConfig = DefaultHraftConfig()
+)
+
+func TestMain(m *testing.M) {
+	hraftConfig.EnableLeaderForward = false
+	hraftConfig.RaftBindAddr = "127.0.0.1:0"
+	os.Exit(m.Run())
+}
+
 func Test_StoreOpen(t *testing.T) {
 
+	//hraftConfig.RaftBindAddr = "127.0.0.1:0"
+
 	s := New()
-	s.disableForwarding = true
+	//s.disableForwarding = true
 
 	tmpDir, _ := ioutil.TempDir("", "store_test")
 	defer os.RemoveAll(tmpDir)
 
-	s.RaftBind = "127.0.0.1:0"
-	s.RaftDir = tmpDir
+	//s.RaftBind = "127.0.0.1:0"
+	//s.RaftDir = tmpDir
+	hraftConfig.RaftDataDir = tmpDir
+
 	if s == nil {
 		t.Fatalf("failed to create store")
 	}
 
-	if err := s.Open(false, true); err != nil {
+	if err := s.Open(&hraftConfig); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
 }
 
 func Test_StoreOpenSingleNode(t *testing.T) {
 	s := New()
-	s.disableForwarding = true
+	//s.disableForwarding = true
 
 	tmpDir, _ := ioutil.TempDir("", "store_test")
 	defer os.RemoveAll(tmpDir)
 
-	s.RaftBind = "127.0.0.1:0"
-	s.RaftDir = tmpDir
+	//s.RaftBind = "127.0.0.1:0"
+	//s.RaftDir = tmpDir
+	hraftConfig.RaftDataDir = tmpDir
+
 	if s == nil {
 		t.Fatalf("failed to create store")
 	}
 
-	if err := s.Open(true, true); err != nil {
+	if err := s.Open(&hraftConfig); err != nil {
 		t.Fatalf("failed to open store: %s", err)
 	}
 

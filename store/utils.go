@@ -27,12 +27,14 @@ func readPeersJSON(path string) ([]string, error) {
 	return peers, err
 }
 
+// int64 to byte array
 func itob(v int64) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, uint64(v))
 	return b
 }
 
+// byte array to int64
 func btoi(b []byte) (i int64, err error) {
 	err = binary.Read(bytes.NewBuffer(b), binary.BigEndian, &i)
 	return
@@ -52,9 +54,7 @@ func recvRpcMessage(conn net.Conn) ([]byte, error) {
 			b = make([]byte, length)
 			if r, err = conn.Read(b); err == nil {
 				if int64(r) == length {
-
 					return b, nil
-
 				} else {
 					err = fmt.Errorf("Payload length mismatch %d != %d", r, length)
 				}
@@ -67,14 +67,12 @@ func recvRpcMessage(conn net.Conn) ([]byte, error) {
 }
 
 func sendRpcMessage(conn net.Conn, data []byte) (err error) {
-	//log.Println("Sending data (size):", len(data))
 	_, err = conn.Write(append(itob(int64(len(data))), data...))
 	return
 }
 
 func requestResponseRpc(conn net.Conn, data []byte) (resp []byte, err error) {
 	if err = sendRpcMessage(conn, data); err == nil {
-		//var resp []byte
 		if resp, err = recvRpcMessage(conn); err == nil {
 			if strings.HasPrefix(string(resp), "error") {
 				err = fmt.Errorf("%s", resp)
@@ -84,7 +82,7 @@ func requestResponseRpc(conn net.Conn, data []byte) (resp []byte, err error) {
 	return
 }
 
-// +1 on the provided addr string
+// +1 on the provided raft addr string
 func getRpcBindAddr(raftBindAddr string) (string, error) {
 	if len(raftBindAddr) > 1 {
 		lastDigit := len(raftBindAddr) - 1
