@@ -18,17 +18,11 @@ func TestMain(m *testing.M) {
 }
 
 func Test_StoreOpen(t *testing.T) {
-
-	//hraftConfig.RaftBindAddr = "127.0.0.1:0"
-
-	s := New()
-	//s.disableForwarding = true
+	s := New(InMemKvStore{})
 
 	tmpDir, _ := ioutil.TempDir("", "store_test")
 	defer os.RemoveAll(tmpDir)
 
-	//s.RaftBind = "127.0.0.1:0"
-	//s.RaftDir = tmpDir
 	hraftConfig.RaftDataDir = tmpDir
 
 	if s == nil {
@@ -41,14 +35,11 @@ func Test_StoreOpen(t *testing.T) {
 }
 
 func Test_StoreOpenSingleNode(t *testing.T) {
-	s := New()
-	//s.disableForwarding = true
+	s := New(InMemKvStore{})
 
 	tmpDir, _ := ioutil.TempDir("", "store_test")
 	defer os.RemoveAll(tmpDir)
 
-	//s.RaftBind = "127.0.0.1:0"
-	//s.RaftDir = tmpDir
 	hraftConfig.RaftDataDir = tmpDir
 
 	if s == nil {
