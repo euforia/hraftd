@@ -8,7 +8,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"strconv"
+	//"strconv"
 	"strings"
 )
 
@@ -80,18 +80,4 @@ func requestResponseRpc(conn net.Conn, data []byte) (resp []byte, err error) {
 		}
 	}
 	return
-}
-
-// +1 on the provided raft addr string
-func getRpcBindAddr(raftBindAddr string) (string, error) {
-	if len(raftBindAddr) > 1 {
-		lastDigit := len(raftBindAddr) - 1
-		i, err := strconv.ParseInt(raftBindAddr[lastDigit:], 10, 64)
-		if err == nil {
-			i += 1
-			return fmt.Sprintf("%s%d", raftBindAddr[:lastDigit], i), nil
-		}
-		return "", err
-	}
-	return "", fmt.Errorf("Invalid addr: '%s'", raftBindAddr)
 }

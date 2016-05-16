@@ -3,28 +3,44 @@ package store
 type OpType uint8
 
 const (
-	OpTypeSet OpType = iota
+	OpTypeGet OpType = iota
+	OpTypeSet
 	OpTypeDelete
+	OpTypeNamespaceCreate
+	OpTypeNamespaceDelete
+	OpTypeNamespaceExists
+
 	OpTypeJoin
 )
 
-type commandOptimized struct {
-	Op    OpType
-	Key   string
-	Value []byte
+type raftCommand struct {
+	Op        OpType
+	Namespace []byte
+	Key       []byte
+	Value     []byte
 }
 
 // b[0] = op type
 // b[1] = key length (max: 256)
-func (co *commandOptimized) Serialize() []byte {
-	pre := append([]byte{byte(co.Op), byte(uint8(len(co.Key)))}, []byte(co.Key)...)
+func (co *raftCommand) Serialize() []byte {
+	pre := append([]byte{byte(co.Op), byte(uint8(len(co.Namespace)))}, co.Namespace...)
+	pre = append(pre, byte(uint8(len(co.Key))))
+	pre = append(pre, co.Key...)
 	return append(pre, co.Value...)
+	//return pre
 }
 
 // b[0] = op type
 // b[1] = key length (max: 256)
-func (co *commandOptimized) Deserialize(data []byte) {
+func (co *raftCommand) Deserialize(data []byte) {
 	co.Op = OpType(data[0])
-	co.Key = string(data[2 : uint8(data[1])+2])
-	co.Value = data[uint8(data[1])+2:]
+
+	pos := uint8(data[1]) + 2
+
+	co.Namespace = data[2:pos]
+
+	nextPos := uint8(data[pos]) + pos + 1
+
+	co.Key = data[pos+1 : nextPos]
+	co.Value = data[nextPos:]
 }

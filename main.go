@@ -61,7 +61,13 @@ Options:
 
 func main() {
 
-	s := store.New(store.InMemKvStore{})
+	kvstore, err := store.NewBoltKvStore(hrConfig.RaftDataDir + "/bolt-kvstore.db")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	s := store.New(kvstore)
+	//s := store.New(store.InMemKvStore{})
 
 	if err := s.Open(&hrConfig); err != nil {
 		log.Fatalf("failed to open store: %s", err.Error())

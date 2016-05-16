@@ -67,17 +67,17 @@ func newTestStore() *testStore {
 	}
 }
 
-func (t *testStore) Get(key string) ([]byte, error) {
-	return t.m[key], nil
+func (t *testStore) Get(ns []byte, key []byte) ([]byte, error) {
+	return t.m[string(key)], nil
 }
 
-func (t *testStore) Set(key string, value []byte) error {
-	t.m[key] = value
+func (t *testStore) Set(ns []byte, key []byte, value []byte) error {
+	t.m[string(key)] = value
 	return nil
 }
 
-func (t *testStore) Delete(key string) error {
-	delete(t.m, key)
+func (t *testStore) Delete(ns []byte, key []byte) error {
+	delete(t.m, string(key))
 	return nil
 }
 

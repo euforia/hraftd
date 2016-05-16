@@ -22,6 +22,14 @@ import (
 	"github.com/euforia/hraftd/mux"
 )
 
+type ConsistencyLevel uint8
+
+const (
+	NoneConsistency ConsistencyLevel = iota
+	WeakConsistency
+	StrongConsistency
+)
+
 const (
 	retainSnapshotCount = 2
 	raftTimeout         = 10 * time.Second
@@ -131,46 +139,13 @@ func (s *Store) Open(cfg *HraftConfig) error {
 	knownPeers, _ := s.peerStore.Peers()
 	log.Infof("[raft] Known peers: %v", knownPeers)
 
-	// Instanticate rpc server
+	// Instanticate inter-node communcation (rpc server)
 	if s.cfg.EnableLeaderForward {
 		s.crpc = NewClusterRPC(muxTrans.Listen(muxRpcHeader))
 		go s.crpc.Serve(s.applyRaftLog)
 	}
 
 	return err
-}
-
-// Get returns the 'local' value for the given key.
-func (s *Store) Get(key string) ([]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.m.Get(key)
-}
-
-// Set sets the value for the given key by applying to the log.
-func (s *Store) Set(key string, value []byte) error {
-
-	c := commandOptimized{
-		Op:    OpTypeSet,
-		Key:   key,
-		Value: value,
-	}
-	b := c.Serialize()
-
-	return s.applyRaftLog(b)
-}
-
-// Delete deletes the given key.
-func (s *Store) Delete(key string) error {
-
-	c := commandOptimized{
-		Op:  OpTypeDelete,
-		Key: key,
-	}
-	b := c.Serialize()
-
-	return s.applyRaftLog(b)
 }
 
 // Join joins a node, located at addr, to this store. The node must be ready to
@@ -182,12 +157,12 @@ func (s *Store) Join(addr string) (err error) {
 		f := s.raft.AddPeer(addr)
 		err = f.Error()
 	} else if s.cfg.EnableLeaderForward {
-		co := commandOptimized{
+		co := raftCommand{
 			Op:  OpTypeJoin,
-			Key: addr,
+			Key: []byte(addr),
 		}
 		b := co.Serialize()
-		err = s.forwardLogToLeader(b)
+		_, err = s.forwardLogToLeader(b)
 	} else {
 		err = fmt.Errorf("node is not the leader")
 	}
@@ -198,30 +173,34 @@ func (s *Store) Join(addr string) (err error) {
 	return
 }
 
-func (s *Store) applyRaftLog(b []byte) error {
+func (s *Store) applyRaftLog(b []byte) ([]byte, error) {
 	if s.raft.State() == raft.Leader {
 		// Apply to leader log
 		f := s.raft.Apply(b, raftTimeout)
-		if err, ok := f.(error); ok {
-			return err
+
+		if e := f.(raft.Future); e.Error() != nil {
+			return nil, e.Error()
 		}
-		return nil
+
+		resp := f.Response().(*fsmResp)
+		return resp.data, resp.err
 	}
 
 	if !s.cfg.EnableLeaderForward {
-		return fmt.Errorf("node is not the leader")
+		return nil, fmt.Errorf("node is not the leader")
 	}
 	// Forward to leader
 	return s.forwardLogToLeader(b)
 }
 
-func (s *Store) forwardLogToLeader(b []byte) (err error) {
+func (s *Store) forwardLogToLeader(b []byte) (resp []byte, err error) {
 	if s.raft.Leader() != "" {
 		log.Debugf("[store] Forwarding to leader: %s", s.raft.Leader())
 
 		var conn net.Conn
 		if conn, err = s.crpc.Dial(s.raft.Leader(), 10*time.Second); err == nil {
-			_, err = requestResponseRpc(conn, b)
+			resp, err = requestResponseRpc(conn, b)
+			//log.Debugf("%s,%s", resp, err)
 		}
 
 	} else {

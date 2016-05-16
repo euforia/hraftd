@@ -2,7 +2,7 @@ package store
 
 import (
 	"bytes"
-	"encoding/gob"
+	//"encoding/gob"
 
 	"github.com/hashicorp/raft"
 )
@@ -15,18 +15,24 @@ func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	err := func() error {
 
 		var buff bytes.Buffer
-		if err := gob.NewEncoder(&buff).Encode(f.store); err != nil {
-			return err
+
+		e := f.store.Backup(&buff)
+		if e != nil {
+			return e
 		}
 
+		//if err := gob.NewEncoder(&buff).Encode(f.store); err != nil {
+		//	return err
+		//}
+
 		// Write data to sink.
-		if _, err := sink.Write(buff.Bytes()); err != nil {
-			return err
+		if _, e = sink.Write(buff.Bytes()); e != nil {
+			return e
 		}
 
 		// Close the sink.
-		if err := sink.Close(); err != nil {
-			return err
+		if e = sink.Close(); e != nil {
+			return e
 		}
 
 		return nil

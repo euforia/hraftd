@@ -10,18 +10,25 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
+
+	"github.com/euforia/hraftd/store"
 )
+
+var defaultNamespace = []byte("_default_")
 
 // Store is the interface Raft-backed key-value stores must implement.
 type Store interface {
 	// Get returns the value for the given key.
-	Get(key string) ([]byte, error)
+	Get(ns []byte, key []byte, lvl store.ConsistencyLevel) ([]byte, error)
+	NamespaceExists(ns []byte, lvl store.ConsistencyLevel) (bool, error)
+
+	CreateNamespace(ns []byte) error
 
 	// Set sets the value for the given key, via distributed consensus.
-	Set(key string, value []byte) error
+	Set(ns []byte, key []byte, value []byte) error
 
 	// Delete removes the given key, via distributed consensus.
-	Delete(key string) error
+	Delete(ns []byte, key []byte) error
 
 	// Join joins the node (self), reachable at addr, to the cluster.
 	Join(addr string) error
@@ -75,7 +82,7 @@ func (s *Service) Close() {
 
 // ServeHTTP allows Service to serve HTTP requests.
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/key") {
+	if strings.HasPrefix(r.URL.Path, "/v0") {
 		s.handleKeyRequest(w, r)
 	} else if r.URL.Path == "/join" {
 		s.handleJoin(w, r)
@@ -110,62 +117,99 @@ func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
-	getKey := func() string {
+	ns, key := func() (string, string) {
 		parts := strings.Split(r.URL.Path, "/")
-		if len(parts) != 3 {
-			return ""
+		//log.Printf("%#v\n", parts)
+		if len(parts) == 4 {
+			return parts[2], parts[3]
+		} else if len(parts) == 3 {
+			return parts[2], ""
 		}
-		return parts[2]
-	}
+		return "", ""
+	}()
+
+	log.Debugf("%s Namespace='%s' Key='%s'", r.Method, ns, key)
 
 	switch r.Method {
 	case "GET":
-		k := getKey()
-		if k == "" {
-			w.WriteHeader(http.StatusBadRequest)
-		}
-		v, err := s.store.Get(k)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+		var lvl store.ConsistencyLevel
+		if _, ok := r.URL.Query()["consistency"]; ok {
+			lvl = store.StrongConsistency
+		} else {
+			lvl = store.NoneConsistency
 		}
 
-		b, err := json.Marshal(map[string]string{k: string(v)})
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
+		// Check if namespace exists
+		if key == "" {
+			//w.WriteHeader(404)
+
+			b, err := s.store.NamespaceExists([]byte(ns), lvl)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
+			if b {
+				w.WriteHeader(200)
+				return
+			}
+			w.WriteHeader(404)
+		} else {
+
+			v, err := s.store.Get([]byte(ns), []byte(key), lvl)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			b, err := json.Marshal(map[string]string{key: string(v)})
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			io.WriteString(w, string(b))
 		}
-
-		io.WriteString(w, string(b))
-
 	case "POST":
-		// Read the value from the POST body.
 		m := map[string]string{}
 		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		for k, v := range m {
-			if err := s.store.Set(k, []byte(v)); err != nil {
+
+		if ns == "" {
+			//w.WriteHeader(404)
+			if err := s.store.CreateNamespace([]byte(m["namespace"])); err != nil {
+				w.WriteHeader(400)
+				w.Write([]byte(err.Error()))
+			}
+		} else {
+			// Read the value from the POST body.
+
+			for k, v := range m {
+				if err := s.store.Set([]byte(ns), []byte(k), []byte(v)); err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte(err.Error()))
+					return
+				}
+			}
+		}
+	case "DELETE":
+		if key == "" {
+			// Delete namespace
+			w.WriteHeader(404)
+		} else {
+
+			if err := s.store.Delete([]byte(ns), []byte(key)); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte(err.Error()))
 				return
 			}
+			//s.store.Delete(defaultNamespace, []byte(k))
+			s.store.Delete([]byte(ns), []byte(key))
 		}
-
-	case "DELETE":
-		k := getKey()
-		if k == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if err := s.store.Delete(k); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-		s.store.Delete(k)
 
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
