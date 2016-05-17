@@ -61,11 +61,7 @@ Options:
 
 func main() {
 
-	kvstore, err := store.NewBoltKvStore(hrConfig.RaftDataDir + "/bolt-kvstore.db")
-	if err != nil {
-		log.Fatalln(err)
-	}
-
+	kvstore := store.NewBoltKvStore(hrConfig.RaftDataDir + "/bolt-kvstore.db")
 	s := store.New(kvstore)
 	//s := store.New(store.InMemKvStore{})
 

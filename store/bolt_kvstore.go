@@ -14,9 +14,14 @@ type BoltKvStore struct {
 	dbfile string
 }
 
-func NewBoltKvStore(path string) (b *BoltKvStore, err error) {
-	b = &BoltKvStore{dbfile: path}
-	b.db, err = bolt.Open(b.dbfile, 0600, nil)
+func NewBoltKvStore(path string) *BoltKvStore {
+	return &BoltKvStore{dbfile: path}
+	//b.db, err = bolt.Open(b.dbfile, 0600, nil)
+	//return
+}
+
+func (bkv *BoltKvStore) Open() (err error) {
+	bkv.db, err = bolt.Open(bkv.dbfile, 0600, nil)
 	return
 }
 
@@ -123,7 +128,8 @@ func (bkv *BoltKvStore) Snapshot() (KVStore, error) {
 			n := f.Name()
 			//tstore = &BoltKvStore{dbfile: f.Name()}
 			if err = f.Close(); err == nil {
-				tstore, err = NewBoltKvStore(n)
+				tstore = NewBoltKvStore(n)
+				err = tstore.Open()
 			}
 		}
 	}

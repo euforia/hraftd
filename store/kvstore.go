@@ -8,6 +8,8 @@ import (
 )
 
 type KVStore interface {
+	Open() error
+
 	CreateNamespace(ns []byte) error
 	DeleteNamespace(ns []byte) error
 	NamespaceExists(ns []byte) bool
@@ -24,6 +26,8 @@ type KVStore interface {
 }
 
 type InMemKvStore map[string][]byte
+
+func (ikv InMemKvStore) Open() error { return nil }
 
 func (ikv InMemKvStore) Get(ns []byte, key []byte) ([]byte, error) {
 	if v, ok := ikv[string(key)]; ok {

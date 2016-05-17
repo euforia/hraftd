@@ -35,7 +35,7 @@ func (crpc *ClusterRPC) Serve(callback func(payload []byte) ([]byte, error)) err
 }
 
 func (crpc *ClusterRPC) handleConn(conn net.Conn, callback func(payload []byte) ([]byte, error)) {
-	log.Infoln("[fowarder] Forwarder client connected:", conn.RemoteAddr())
+	log.Infoln("[fowarder] Accepting forwarded request from:", conn.RemoteAddr())
 
 	var (
 		b   []byte
@@ -43,9 +43,8 @@ func (crpc *ClusterRPC) handleConn(conn net.Conn, callback func(payload []byte) 
 	)
 
 	if b, err = recvRpcMessage(conn); err == nil {
-		//&& len(b) > 0
+
 		log.Debugln("[fowarder] Received forwarded bytes:", len(b))
-		//log.Debugf("[forwarder] data: %s", b)
 
 		var resp []byte
 		if resp, err = callback(b); err == nil {

@@ -28,24 +28,16 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 	resp := &fsmResp{}
 
 	switch c.Op {
-	case OpTypeGet:
-		resp.data, resp.err = f.applyGet(c.Namespace, c.Key)
 	case OpTypeSet:
 		resp.err = f.applySet(c.Namespace, c.Key, c.Value)
 	case OpTypeDelete:
 		resp.err = f.applyDelete(c.Namespace, c.Key)
-	case OpTypeNamespaceExists:
-		resp.data, resp.err = f.applyNamespaceExists(c.Namespace)
-	case OpTypeJoin:
-		//log.Debugln("Op: JOIN")
-		r := f.raft.AddPeer(string(c.Key))
-		resp.err = r.Error()
 	case OpTypeNamespaceCreate:
 		resp.err = f.applyNamespaceCreate(c.Namespace)
 	case OpTypeNamespaceDelete:
 		resp.err = f.applyNamespaceDelete(c.Namespace)
 	default:
-		resp.err = fmt.Errorf("unrecognized command op: %v", c.Op)
+		resp.err = fmt.Errorf("unsupported raft command op: %v", c.Op)
 	}
 
 	if resp.err != nil {
@@ -102,6 +94,7 @@ func (f *fsm) applyNamespaceDelete(ns []byte) error {
 	return f.m.DeleteNamespace(ns)
 }
 
+/*
 func (f *fsm) applyNamespaceExists(ns []byte) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -120,3 +113,4 @@ func (f *fsm) applyGet(ns []byte, key []byte) ([]byte, error) {
 
 	return f.m.Get(ns, key)
 }
+*/

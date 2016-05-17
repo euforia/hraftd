@@ -17,6 +17,7 @@ func (s *Store) Get(ns []byte, key []byte, lvl ConsistencyLevel) (b []byte, err 
 		switch lvl {
 		case NoneConsistency:
 			b, err = s.m.Get(ns, key)
+			//fmt.Printf("%s, %s\n", b, err)
 		case WeakConsistency:
 			if s.raft.State() == raft.Leader {
 				b, err = s.m.Get(ns, key)
@@ -24,15 +25,15 @@ func (s *Store) Get(ns []byte, key []byte, lvl ConsistencyLevel) (b []byte, err 
 				err = fmt.Errorf("node not leader")
 			}
 		case StrongConsistency:
-			/*
-				if s.raft.State() == raft.Leader {
-					b, err = s.m.Get(ns, key)
-				} else {
-					err = fmt.Errorf("TBI: forwarding")
-				}
-			*/
-			c := raftCommand{Op: OpTypeGet, Namespace: ns, Key: key}
-			b, err = s.applyRaftLog(c.Serialize())
+			if s.raft.State() == raft.Leader {
+				b, err = s.m.Get(ns, key)
+			} else {
+				c := raftCommand{Op: OpTypeGet, Namespace: ns, Key: key}
+				b, err = s.forwardRequestToLeader(c.Serialize())
+
+				fmt.Printf("%s, err=%s\n", b, err)
+			}
+
 		default:
 			err = fmt.Errorf("Invalid consistency level: %d", lvl)
 		}
@@ -40,6 +41,7 @@ func (s *Store) Get(ns []byte, key []byte, lvl ConsistencyLevel) (b []byte, err 
 	} else {
 		err = fmt.Errorf("Namespace not found: %s", ns)
 	}
+
 	return
 }
 
@@ -54,18 +56,22 @@ func (s *Store) NamespaceExists(ns []byte, lvl ConsistencyLevel) (b bool, err er
 			err = fmt.Errorf("node not leader")
 		}
 	case StrongConsistency:
-		//if s.raft.State() == raft.Leader {
-		//	b = s.m.NamespaceExists(ns)
-		//} else {
-		//err = fmt.Errorf("TBI: forwarding")
-		c := raftCommand{Op: OpTypeNamespaceExists, Namespace: ns}
-		//var data []byte
-		if resp, _ := s.applyRaftLog(c.Serialize()); string(resp) == "true" {
-			b = true
+		if s.raft.State() == raft.Leader {
+			b = s.m.NamespaceExists(ns)
 		} else {
-			b = false
+
+			c := raftCommand{Op: OpTypeNamespaceExists, Namespace: ns}
+			var resp []byte
+			if resp, err = s.forwardRequestToLeader(c.Serialize()); err == nil {
+				if string(resp) == "true" {
+					b = true
+				} else {
+					b = false
+				}
+			}
+			//err = fmt.Errorf("TBI: foward to leader")
+
 		}
-		//}
 	default:
 		b = false
 		err = fmt.Errorf("Invalid consistency level: %d", lvl)

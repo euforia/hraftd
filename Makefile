@@ -1,6 +1,7 @@
+SHELL = /bin/bash
 
 .clean:
-	rm -rf var/run/hraftd/*
+	rm -rf ./hraft/n*
 
 .PHONY: test
 test:

@@ -162,6 +162,7 @@ func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(err.Error()))
 				return
 			}
+			//log.Debugln(err, v)
 
 			b, err := json.Marshal(map[string]string{key: string(v)})
 			if err != nil {
