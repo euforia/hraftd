@@ -41,7 +41,7 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 	}
 
 	if resp.err != nil {
-		log.Errorln("[raft]", resp.err)
+		log.Warningln("[raft]", resp.err)
 	}
 
 	return resp

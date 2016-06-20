@@ -35,11 +35,11 @@ func (s *Store) Get(ns []byte, key []byte, lvl ConsistencyLevel) (b []byte, err 
 			}
 
 		default:
-			err = fmt.Errorf("Invalid consistency level: %d", lvl)
+			err = fmt.Errorf("invalid consistency level: %d", lvl)
 		}
 
 	} else {
-		err = fmt.Errorf("Namespace not found: %s", ns)
+		err = fmt.Errorf("namespace not found: %s", ns)
 	}
 
 	return
@@ -74,7 +74,7 @@ func (s *Store) NamespaceExists(ns []byte, lvl ConsistencyLevel) (b bool, err er
 		}
 	default:
 		b = false
-		err = fmt.Errorf("Invalid consistency level: %d", lvl)
+		err = fmt.Errorf("invalid consistency level: %d", lvl)
 	}
 	return
 }
@@ -90,7 +90,7 @@ func (s *Store) Set(ns []byte, key []byte, value []byte) (err error) {
 		}
 		_, err = s.applyRaftLog(c.Serialize())
 	} else {
-		err = fmt.Errorf("Namespace not found: %s", ns)
+		err = fmt.Errorf("namespace not found: %s", ns)
 	}
 	return
 }
@@ -106,7 +106,7 @@ func (s *Store) Delete(ns []byte, key []byte) (err error) {
 		_, err = s.applyRaftLog(c.Serialize())
 
 	} else {
-		err = fmt.Errorf("Namespace not found: %s", ns)
+		err = fmt.Errorf("namespace not found: %s", ns)
 	}
 	return
 }
@@ -119,7 +119,7 @@ func (s *Store) DeleteNamespace(ns []byte) (err error) {
 		}
 		_, err = s.applyRaftLog(c.Serialize())
 	} else {
-		err = fmt.Errorf("Namespace not found: %s", ns)
+		err = fmt.Errorf("namespace not found: %s", ns)
 	}
 	return
 }
@@ -132,7 +132,7 @@ func (s *Store) CreateNamespace(ns []byte) (err error) {
 		}
 		_, err = s.applyRaftLog(c.Serialize())
 	} else {
-		err = fmt.Errorf("Namespace exists: %s", ns)
+		err = fmt.Errorf("namespace exists: %s", ns)
 	}
 	return
 }

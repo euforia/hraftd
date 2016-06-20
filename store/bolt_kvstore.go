@@ -55,11 +55,11 @@ func (bkv *BoltKvStore) Get(ns []byte, key []byte) (d []byte, err error) {
 		if bucket := tx.Bucket(ns); bucket != nil {
 			//bucket := tx.Bucket(ns)
 			if d = bucket.Get(key); d == nil {
-				return fmt.Errorf("Key not found: ns=%s key=%s", ns, key)
+				return fmt.Errorf("key not found: ns=%s key=%s", ns, key)
 			}
 			return nil
 		}
-		return fmt.Errorf("Namespace not found: %s", ns)
+		return fmt.Errorf("namespace not found: %s", ns)
 	})
 	return
 }
@@ -69,7 +69,7 @@ func (bkv *BoltKvStore) Set(ns []byte, key []byte, value []byte) error {
 		if bkt := tx.Bucket(ns); bkt != nil {
 			return bkt.Put(key, value)
 		}
-		return fmt.Errorf("Namespace not found: %s", ns)
+		return fmt.Errorf("namespace not found: %s", ns)
 	})
 }
 
@@ -78,7 +78,7 @@ func (bkv *BoltKvStore) Delete(ns []byte, key []byte) error {
 		if bkt := tx.Bucket(ns); bkt != nil {
 			return bkt.Delete(key)
 		}
-		return fmt.Errorf("Namespace not found: %s", ns)
+		return fmt.Errorf("namespace not found: %s", ns)
 	})
 }
 

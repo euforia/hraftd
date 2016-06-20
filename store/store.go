@@ -223,12 +223,6 @@ func (s *Store) serveRPC(b []byte) (resp []byte, err error) {
 	switch c.Op {
 	case OpTypeGet:
 		resp, err = s.Get(c.Namespace, c.Key, StrongConsistency)
-	case OpTypeSet:
-		err = s.Set(c.Namespace, c.Key, c.Value)
-	case OpTypeNamespaceCreate:
-		err = s.CreateNamespace(c.Namespace)
-	case OpTypeNamespaceDelete:
-		err = s.DeleteNamespace(c.Namespace)
 	case OpTypeNamespaceExists:
 		var exists bool
 		if exists, err = s.NamespaceExists(c.Namespace, StrongConsistency); err == nil {
@@ -238,6 +232,14 @@ func (s *Store) serveRPC(b []byte) (resp []byte, err error) {
 				resp = []byte("false")
 			}
 		}
+	case OpTypeSet:
+		err = s.Set(c.Namespace, c.Key, c.Value)
+	case OpTypeNamespaceCreate:
+		err = s.CreateNamespace(c.Namespace)
+	case OpTypeNamespaceDelete:
+		err = s.DeleteNamespace(c.Namespace)
+	case OpTypeDelete:
+		err = s.Delete(c.Namespace, c.Key)
 	case OpTypeJoin:
 		r := s.raft.AddPeer(string(c.Key))
 		err = r.Error()

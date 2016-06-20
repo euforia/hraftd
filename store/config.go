@@ -2,7 +2,7 @@ package store
 
 const (
 	DefaultRaftAddr    = ":12000"
-	DefaultRaftDataDir = "hraft"
+	DefaultRaftDataDir = ".hraft"
 )
 
 type HraftConfig struct {
