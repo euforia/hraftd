@@ -53,6 +53,7 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 	return nil
 }
 
+// Actually apply to storage
 func (f *fsm) applySet(key, value string) interface{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -60,6 +61,7 @@ func (f *fsm) applySet(key, value string) interface{} {
 	return nil
 }
 
+// Actually apply to storage
 func (f *fsm) applyDelete(key string) interface{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
