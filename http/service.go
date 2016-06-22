@@ -87,6 +87,7 @@ func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) {
 	m := map[string]string{}
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
 		return
 	}
 
@@ -103,6 +104,7 @@ func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.Join(remoteAddr); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
 		return
 	}
 }
@@ -125,12 +127,14 @@ func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
 		v, err := s.store.Get(k)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
 		b, err := json.Marshal(map[string]string{k: v})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
@@ -141,11 +145,13 @@ func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
 		m := map[string]string{}
 		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
 			return
 		}
 		for k, v := range m {
 			if err := s.store.Set(k, v); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
 				return
 			}
 		}
@@ -158,6 +164,7 @@ func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.store.Delete(k); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
 		s.store.Delete(k)
