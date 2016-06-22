@@ -7,13 +7,14 @@ import (
 )
 
 type fsmSnapshot struct {
-	store map[string]string
+	//store map[string]string
+	store *InMemDatastore
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	err := func() error {
 		// Encode data.
-		b, err := json.Marshal(f.store)
+		b, err := json.Marshal(f.store.m)
 		if err != nil {
 			return err
 		}
