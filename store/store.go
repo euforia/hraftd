@@ -7,7 +7,8 @@
 package store
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"net"
@@ -20,15 +21,56 @@ import (
 	"github.com/hashicorp/raft-boltdb"
 )
 
+// The key-value store for the system.
+type InMemDatastore struct {
+	m map[string]string
+}
+
+func NewInMemDatastore() *InMemDatastore {
+	return &InMemDatastore{m: map[string]string{}}
+}
+
+func (im *InMemDatastore) Get(key string) (string, error) {
+	if _, ok := im.m[key]; ok {
+		return im.m[key], nil
+	}
+	return "", fmt.Errorf("not found: %s", key)
+}
+
+func (im *InMemDatastore) Set(key, value string) error {
+	im.m[key] = value
+	return nil
+}
+
+func (im *InMemDatastore) Delete(key string) error {
+	if _, ok := im.m[key]; !ok {
+		return fmt.Errorf("not found: %s", key)
+	}
+	delete(im.m, key)
+	return nil
+}
+
+// Clone datastore by copying current data to a new instance
+// and return the new instance
+func (im *InMemDatastore) Snapshot() *InMemDatastore {
+	o := NewInMemDatastore()
+	for k, v := range im.m {
+		o.m[k] = v
+	}
+	return o
+}
+
 // Store is a simple key-value store, where all changes are made via Raft consensus.
 type Store struct {
 	RaftDir  string
 	RaftBind string
 
 	mu sync.Mutex
-	m  map[string]string // The key-value store for the system.
 
-	raft *raft.Raft // The consensus mechanism
+	m *InMemDatastore // The key-value store for the system.
+
+	raft      *raft.Raft      // The consensus mechanism
+	peerStore *raft.JSONPeers // List of peers
 
 	logger *log.Logger
 }
@@ -36,7 +78,7 @@ type Store struct {
 // New returns a new Store.
 func New() *Store {
 	return &Store{
-		m:      make(map[string]string),
+		m:      NewInMemDatastore(),
 		logger: log.New(os.Stderr, "[store] ", log.LstdFlags),
 	}
 }
@@ -72,7 +114,7 @@ func (s *Store) Open(enableSingle bool) error {
 	}
 
 	// Create peer storage.
-	peerStore := raft.NewJSONPeers(s.RaftDir, transport)
+	s.peerStore = raft.NewJSONPeers(s.RaftDir, transport)
 
 	// Create the snapshot store. This allows the Raft to truncate the log.
 	snapshots, err := raft.NewFileSnapshotStore(s.RaftDir, retainSnapshotCount, os.Stderr)
@@ -87,7 +129,7 @@ func (s *Store) Open(enableSingle bool) error {
 	}
 
 	// Instantiate the Raft systems.
-	ra, err := raft.NewRaft(config, (*fsm)(s), logStore, logStore, snapshots, peerStore, transport)
+	ra, err := raft.NewRaft(config, (*fsm)(s), logStore, logStore, snapshots, s.peerStore, transport)
 	if err != nil {
 		return fmt.Errorf("new raft: %s", err)
 	}
@@ -99,7 +141,7 @@ func (s *Store) Open(enableSingle bool) error {
 func (s *Store) Get(key string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.m[key], nil
+	return s.m.Get(key)
 }
 
 // Set sets the value for the given key.
@@ -109,21 +151,12 @@ func (s *Store) Set(key, value string) error {
 	}
 
 	c := &command{
-		Op:    "set",
+		Op:    opTypeSet,
 		Key:   key,
 		Value: value,
 	}
-	b, err := json.Marshal(c)
-	if err != nil {
-		return err
-	}
 
-	f := s.raft.Apply(b, raftTimeout)
-	if err, ok := f.(error); ok {
-		return err
-	}
-
-	return nil
+	return s.applyRaftLog(c)
 }
 
 // Delete deletes the given key.
@@ -133,19 +166,26 @@ func (s *Store) Delete(key string) error {
 	}
 
 	c := &command{
-		Op:  "delete",
+		Op:  opTypeDelete,
 		Key: key,
 	}
-	b, err := json.Marshal(c)
+
+	return s.applyRaftLog(c)
+}
+
+func (s *Store) applyRaftLog(c *command) error {
+
+	buf := new(bytes.Buffer)
+	enc := gob.NewEncoder(buf)
+	err := enc.Encode(c)
 	if err != nil {
 		return err
 	}
 
-	f := s.raft.Apply(b, raftTimeout)
+	f := s.raft.Apply(buf.Bytes(), raftTimeout)
 	if err, ok := f.(error); ok {
 		return err
 	}
-
 	return nil
 }
 
